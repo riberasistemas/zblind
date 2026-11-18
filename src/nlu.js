@@ -58,6 +58,8 @@ export function quickIntent(text) {
   // Precio en otra moneda: «¿y en pesos mexicanos?», «¿cuánto es en dólares?»
   const cur = t.length < 60 && /\ben\b/.test(t) && !/\b(pasa|baja|sube|cae|avisa)/.test(t) ? currencyIn(t) : null;
   if (cur && /^(y |precio|cuanto|a cuanto|cotizacion|zcash|zec|bitcoin|btc|en )/.test(t)) return { intent: 'price', asset: assetIn(t), ...cur };
+  // Cobrar en ZEC: código QR de pago (ZIP-321)
+  if (/^(cobrar|cobro|cobrar en zec|recibir zec|recibir un pago|pedir un pago)$/.test(t) || /\b(quiero cobrar|como cobro|como (puedo )?cobrar|que me paguen|codigo qr|qr de pago|qr para cobrar|pedir (un )?pago)\b/.test(t)) return { intent: 'cobrar' };
   // Dólares digitales y compra entre particulares: lección extra
   if (/\b(usdt|usdc|tether|stablecoins?|monedas? estables?|dolar(es)? digital(es)?|criptodolar(es)?|p2p|entre particulares)\b/.test(t)) return { intent: 'dollars' };
   // Comprar o conseguir ZEC: la lección 5 lo explica sin recomendar ningún sitio

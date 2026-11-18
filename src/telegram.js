@@ -4,12 +4,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function createApi(token, fetchFn = fetch) {
   const base = `https://api.telegram.org/bot${token}/`;
-  async function call(method, params = {}) {
-    const res = await fetchFn(base + method, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(params),
-    });
+  async function result(method, res) {
     const data = await res.json();
     if (data.ok) return data.result;
     const err = new Error(`${method}: ${data.description}`);
@@ -17,7 +12,22 @@ export function createApi(token, fetchFn = fetch) {
     err.retryAfter = data.parameters?.retry_after;
     throw err;
   }
-  return { call };
+  async function call(method, params = {}) {
+    const res = await fetchFn(base + method, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return result(method, res);
+  }
+  /** Sube un archivo hecho por nosotros (p. ej. el PNG de un QR) sin pasar por servicios externos. */
+  async function upload(method, params, field, bytes, filename, type = 'image/png') {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(params)) fd.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+    fd.append(field, new Blob([bytes], { type }), filename);
+    return result(method, await fetchFn(base + method, { method: 'POST', body: fd }));
+  }
+  return { call, upload };
 }
 
 export const message = (chatId, text, extra = {}) => ({

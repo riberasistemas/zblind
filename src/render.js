@@ -26,10 +26,11 @@ export const BUTTONS = {
   '📖 Cómo funciona': 'help',
   '💬 Tu opinión': 'feedback',
   '🔎 ¿Es esto una copia?': 'copia',
+  '📥 Cobrar en ZEC': 'cobrar',
 };
 export const KEYBOARD = {
   reply_markup: {
-    keyboard: [['💰 Precio', '🎓 Aprende Zcash'], ['🛡️ Red Zcash', '🛰️ Nodos'], ['🔎 ¿Es esto una copia?']].map((r) => r.map((text) => ({ text }))),
+    keyboard: [['💰 Precio', '🎓 Aprende Zcash'], ['🛡️ Red Zcash', '🛰️ Nodos'], ['📥 Cobrar en ZEC', '🔎 ¿Es esto una copia?']].map((r) => r.map((text) => ({ text }))),
     resize_keyboard: true,
     is_persistent: true,
   },
@@ -160,6 +161,7 @@ export const T = {
     '',
     '💰 <b>Precio</b>: cuánto vale hoy en tu moneda.',
     '🎓 <b>Aprende Zcash</b>: 10 lecciones cortas, de una en una.',
+    '📥 <b>Cobrar en ZEC</b>: te hago un código QR para que te paguen en ZEC, directo a tu cartera.',
     '🔎 <b>¿Es esto una copia?</b>: me pegas un enlace o un mensaje raro y te digo si huele a estafa.',
     '🛡️ <b>Red Zcash</b>: cuánto hay blindado. 🛰️ <b>Nodos</b>: los servidores públicos de la comunidad.',
     '🔔 <b>Alertas</b>: te aviso cuando el precio llegue a la cifra que me digas.',
@@ -207,7 +209,7 @@ export const T = {
     '1. Zblind es gratuito y de código abierto. No hay pagos ni Premium.',
     '2. Zblind informa y enseña sobre Zcash. No es asesoramiento financiero ni recomienda comprar, vender o invertir, ni recomienda exchanges.',
     '3. Fuentes: Coinbase (precios), Maya Protocol (precio descentralizado) y el explorador de Nighthawk (datos de la red Zcash). Pueden fallar o retrasarse.',
-    '4. Guardamos tu ID de Telegram, tu nombre de usuario, tu país y tus alertas. Nada más. No se vende ni se comparte. Para responder a tus preguntas usamos la inteligencia artificial de Cloudflare, que no guarda tus mensajes. /borrar_mis_datos lo borra todo.',
+    '4. Guardamos tu ID de Telegram, tu nombre de usuario, tu país, tus alertas y, solo si pides que la recuerde, tu dirección de cobro. Nada más. Los códigos QR de cobro se hacen en nuestro servidor, sin servicios externos. No se vende ni se comparte. Para responder a tus preguntas usamos la inteligencia artificial de Cloudflare, que no guarda tus mensajes. /borrar_mis_datos lo borra todo.',
     '5. Zcash es una marca de sus titulares; Zblind es un proyecto independiente de la comunidad.',
     '6. Responsable: Augusto Martín (riberasistemas) · hola@riberasistemas.com',
   ].join('\n'),

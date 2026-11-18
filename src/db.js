@@ -69,6 +69,7 @@ export function createDb(d1) {
         d1.prepare('DELETE FROM alerts WHERE user_id = ?').bind(id),
         d1.prepare('DELETE FROM outbox WHERE chat_id = ?').bind(id),
         d1.prepare('DELETE FROM users WHERE id = ?').bind(id),
+        d1.prepare('DELETE FROM kv WHERE k IN (?, ?, ?, ?)').bind(`cobro_dir:${id}`, `cobrando:${id}`, `opinando:${id}`, `copiando:${id}`),
       ]);
     },
 
@@ -84,7 +85,7 @@ export function createDb(d1) {
     kvSet: (k, v) => run(`INSERT INTO kv (k, v) VALUES (?, ?)${KV_UPSERT}`, k, String(v)),
     kvPrefix: (prefix) => all('SELECT k, v FROM kv WHERE k LIKE ? ORDER BY k', `${prefix}%`),
     async kvAll() {
-      return new Map((await all('SELECT k, v FROM kv WHERE k NOT LIKE ? AND k NOT LIKE ?', 'opinion:%', 'opinando:%')).map((r) => [r.k, r.v]));
+      return new Map((await all('SELECT k, v FROM kv WHERE k NOT LIKE ? AND k NOT LIKE ? AND k NOT LIKE ?', 'opinion:%', 'opinando:%', 'cobr%')).map((r) => [r.k, r.v]));
     },
     kvSetMany: (entries) => insertMany('INSERT INTO kv (k, v) VALUES', entries.map(([k, v]) => [k, String(v)]), KV_UPSERT),
 

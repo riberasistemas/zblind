@@ -7,9 +7,11 @@ import { T } from './render.js';
 import { madrid } from './time.js';
 import { message } from './telegram.js';
 import { withCountry } from './region.js';
-import { quickIntent, answer } from './nlu.js';
+import { quickIntent, answer, parseNumber, currencyIn } from './nlu.js';
 import { fetchRates, fetchCandles, fetchMaya, fetchNetwork, fetchNodes } from './market.js';
 import * as C from './copias.js';
+import * as Z from './cobro.js';
+import { qrPng } from './qr.js';
 
 export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { fetchRates, fetchCandles, fetchMaya, fetchNetwork, fetchNodes }, http = (...a) => fetch(...a) }) {
   const reply = (chatId, text, extra = {}) => api.call('sendMessage', message(chatId, text, extra));
@@ -230,7 +232,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
   });
 
   const lessonDolares = (chatId) => reply(chatId, [`<b>${LESSON_DOLARES.title}</b>`, '', ...LESSON_DOLARES.text].join('\n'), {
-    reply_markup: { inline_keyboard: [[{ text: '🔎 ¿Es esto una copia?', callback_data: 'ck:0' }], [{ text: '🎓 Cómo conseguir ZEC', callback_data: 'l:4' }, { text: '📚 Índice del curso', callback_data: 'l:idx' }]] },
+    reply_markup: { inline_keyboard: [[{ text: '📥 Cobrar en ZEC', callback_data: 'cb:new' }, { text: '🔎 ¿Es esto una copia?', callback_data: 'ck:0' }], [{ text: '🎓 Cómo conseguir ZEC', callback_data: 'l:4' }, { text: '📚 Índice del curso', callback_data: 'l:idx' }]] },
   });
 
   const copiaReply = (chatId, text) => {
@@ -250,6 +252,176 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
     return true;
   }
 
+  // --- «Cobrar en ZEC»: importe → concepto → dirección → QR (ZIP-321). Sin custodia: no tocamos el dinero ---
+
+  const cobroKey = (id) => `cobrando:${id}`;
+  const dirKey = (id) => `cobro_dir:${id}`;
+  const getCobro = async (id) => { const s = await kvJson(cobroKey(id)); return s && clock() - s.at < 3600_000 ? s : null; };
+  const setCobro = (id, s) => db.kvSet(cobroKey(id), JSON.stringify({ ...s, at: clock() }));
+  const endCobro = (id) => db.kvSet(cobroKey(id), 'null');
+  const cancelRow = [{ text: '✖️ Cancelar', callback_data: 'cb:cancel' }];
+
+  /** «0,5», «0.5 zec», «20 dólares», «5.000 pesos», «20 €». Sin moneda = ZEC. */
+  async function cobroAmount(text, user) {
+    const t = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const num = t.match(/\d[\d.,]*k?/);
+    const n = num && parseNumber(num[0]);
+    if (!n) return null;
+    const own = countryOf(user);
+    let cur = /\b(zec|zcash)\b/.test(t) ? null : currencyIn(t);
+    if (!cur && /€/.test(t)) cur = { currency: 'EUR', currencyName: 'euros' };
+    if (!cur && /\$/.test(t)) cur = own.currency === 'EUR' ? { currency: 'USD', currencyName: 'dólares' } : { currency: own.currency, currencyName: own.currencyName };
+    if (!cur) return n <= 21e6 ? { zec: n } : null;
+    const rate = (await prices('ZEC'))?.[cur.currency];
+    if (!rate) return { error: true };
+    return { zec: Math.round((n / rate) * 1e8) / 1e8, fiat: { amount: n, ...cur } };
+  }
+
+  async function startCobro(chatId, user, arg = '') {
+    if (/^(olvidar|olvida|borrar)/i.test(arg)) {
+      await db.kvSet(dirKey(user.id), 'null');
+      return reply(chatId, '🗑 Hecho: he olvidado tu dirección de cobro.');
+    }
+    const amount = arg ? await cobroAmount(arg, user) : null;
+    const saved = await kvJson(dirKey(user.id));
+    if (amount?.zec && saved) return finishCobro(chatId, user, { ...amount, concept: '', ...saved, saved: true });
+    if (amount?.zec) return askConcept(chatId, user, amount);
+    await setCobro(user.id, { step: 'amount' });
+    return reply(chatId, [
+      '📥 <b>Cobrar en ZEC</b>',
+      '',
+      'Te preparo un código QR para que te paguen en ZEC. El dinero va directo de la cartera de quien paga a la tuya: Zblind no lo toca.',
+      '',
+      `¿Cuánto quieres cobrar? Escríbelo en ZEC (por ejemplo <b>0,5</b>) o en tu moneda (por ejemplo <b>20 ${countryOf(user).currencyName}</b>).`,
+    ].join('\n'), { reply_markup: { inline_keyboard: [[{ text: '🤷 Que lo decida quien paga', callback_data: 'cb:none' }], cancelRow] } });
+  }
+
+  async function askConcept(chatId, user, s) {
+    await setCobro(user.id, { ...s, step: 'concept' });
+    return reply(chatId, '📝 ¿Le pongo un <b>concepto</b>? Por ejemplo «Clases de inglés, marzo». Lo verá quien paga en su cartera.', {
+      reply_markup: { inline_keyboard: [[{ text: 'Sin concepto', callback_data: 'cb:noc' }], cancelRow] },
+    });
+  }
+
+  async function toAddress(chatId, user, s) {
+    const saved = await kvJson(dirKey(user.id));
+    if (saved) return finishCobro(chatId, user, { ...s, ...saved, saved: true });
+    await setCobro(user.id, { ...s, step: 'address' });
+    return reply(chatId, [
+      '📬 Pégame tu <b>dirección de Zcash para recibir</b>.',
+      '',
+      'Mejor una <b>unificada</b> (empieza por <code>u1</code>): la encuentras en tu cartera, en «Recibir».',
+      '🔐 Solo la dirección. <b>Nunca</b> tu frase de recuperación: esa no se la das a nadie, tampoco a mí.',
+    ].join('\n'), { reply_markup: { inline_keyboard: [cancelRow] } });
+  }
+
+  async function finishCobro(chatId, user, s) {
+    const uri = Z.paymentUri(s);
+    const shielded = Z.isShielded(s.kind);
+    const zec = s.zec ? `<b>${R.esc(Number(Z.zecAmount(s.zec)).toLocaleString('es-ES', { maximumFractionDigits: 8 }))} ZEC</b>` : null;
+    const caption = [
+      '📥 <b>Cobro en ZEC</b>',
+      `Importe: ${zec ? (s.fiat ? `${zec} (≈ ${R.esc(R.fmt(s.fiat.amount, s.fiat.amount % 1 ? 2 : 0))} ${R.esc(s.fiat.currencyName)} al precio de ahora)` : zec) : 'lo decide quien paga'}`,
+      s.concept ? `Concepto: ${R.esc(s.concept)}` : null,
+      `Para: <code>${R.esc(Z.shortAddr(s.address))}</code> ${shielded ? '🛡️ blindada' : '⚠️ transparente'}`,
+      '',
+      'Quien te paga lo escanea con su cartera de Zcash (por ejemplo Zodl) y le sale todo rellenado.',
+    ].filter((l) => l !== null).join('\n');
+    try {
+      const png = await qrPng(uri);
+      const params = { chat_id: chatId, caption, parse_mode: 'HTML' };
+      if (api.upload) await api.upload('sendPhoto', params, 'photo', png, 'cobro-zec.png');
+      else await api.call('sendPhoto', { ...params, photo: '(png)' });
+    } catch (e) {
+      console.error('[qr]', e.message);
+      await reply(chatId, caption);
+    }
+    await setCobro(user.id, { step: 'done', address: s.address, kind: s.kind });
+    const buttons = [[{ text: '📥 Otro cobro', callback_data: 'cb:new' }]];
+    if (!s.saved) buttons.unshift([{ text: '💾 Recordar mi dirección para la próxima', callback_data: 'cb:save' }]);
+    else buttons.push([{ text: '🗑 Olvidar mi dirección', callback_data: 'cb:forget' }]);
+    return reply(chatId, [
+      'Si te paga a distancia, reenvíale la imagen o este enlace de pago (mantén el dedo encima para copiarlo):',
+      '',
+      `<code>${R.esc(uri)}</code>`,
+      shielded ? '' : '\n⚠️ Con una dirección transparente, el pago y el concepto se ven en la cadena. Si puedes, usa una unificada (<code>u1</code>).',
+    ].join('\n'), { reply_markup: { inline_keyboard: buttons } });
+  }
+
+  async function takeCobro(msg, user) {
+    const s = await getCobro(user.id);
+    if (!s || s.step === 'done') return false;
+    const chatId = msg.chat.id;
+    const text = msg.text.trim();
+    if (R.BUTTONS[text]) { await endCobro(user.id); return false; }
+    if (/^cancelar$/i.test(text)) { await endCobro(user.id); await reply(chatId, 'Vale, lo dejamos.'); return true; }
+    const kind = await Z.addressKind(text);
+    if (kind === 'seed') {
+      return reply(chatId, '🚨 <b>Eso parece una frase de recuperación.</b> Borra ese mensaje ahora mismo (mantén el dedo encima → Eliminar). No la guardo. Con esa frase cualquiera vacía tu cartera: para cobrar solo hace falta tu dirección.').then(() => true);
+    }
+    if (s.step === 'amount') {
+      const a = await cobroAmount(text, user);
+      if (a?.error) { await reply(chatId, T.noData); return true; }
+      if (!a) { await reply(chatId, `No entiendo la cantidad. Escríbela así: <b>0,5</b> (en ZEC) o <b>20 ${countryOf(user).currencyName}</b>.`); return true; }
+      await askConcept(chatId, user, a);
+      return true;
+    }
+    if (s.step === 'concept') {
+      await toAddress(chatId, user, { ...s, concept: text.replace(/[<>]/g, '').slice(0, 80) });
+      return true;
+    }
+    if (s.step === 'address') {
+      const why = {
+        testnet: 'Esa dirección es de la red de pruebas (testnet). Para cobrar de verdad necesito una de la red principal: empieza por <code>u1</code>, <code>zs1</code> o <code>t1</code>.',
+        invalid: 'Esa dirección no me cuadra: puede faltar o sobrar un carácter. Cópiala otra vez desde tu cartera, en «Recibir», y pégamela entera.',
+      }[kind];
+      if (why) { await reply(chatId, why); return true; }
+      await finishCobro(chatId, user, { ...s, address: text, kind });
+      return true;
+    }
+    return false;
+  }
+
+  async function onCobroButton(chatId, user, id) {
+    const s = await getCobro(user.id);
+    if (id === 'new') return startCobro(chatId, user);
+    if (id === 'cancel') { await endCobro(user.id); return reply(chatId, 'Vale, lo dejamos.'); }
+    if (id === 'forget') { await db.kvSet(dirKey(user.id), 'null'); return reply(chatId, '🗑 Hecho: he olvidado tu dirección de cobro.'); }
+    if (id === 'save' && s?.step === 'done') {
+      await db.kvSet(dirKey(user.id), JSON.stringify({ address: s.address, kind: s.kind }));
+      return reply(chatId, '💾 Guardada. La próxima vez solo te pregunto el importe. Para olvidarla: /cobrar olvidar');
+    }
+    if (id === 'none' && s?.step === 'amount') return askConcept(chatId, user, { zec: null });
+    if (id === 'noc' && s?.step === 'concept') return toAddress(chatId, user, { ...s, concept: '' });
+    return startCobro(chatId, user); // botón de un cobro caducado: se empieza de nuevo
+  }
+
+  // --- /donar: privado por defecto, transparente por elección (clave de visualización publicada) ---
+
+  const canDonate = !!(cfg.donateAddress && cfg.donateViewKey);
+  async function cmdDonate(chatId) {
+    if (!canDonate) return reply(chatId, 'Zblind es gratis y por ahora no recoge donaciones. Lo que más nos ayuda: compártelo con alguien 🙏', { reply_markup: { inline_keyboard: [startButtons.reply_markup.inline_keyboard.at(-1)] } });
+    const uri = Z.paymentUri({ address: cfg.donateAddress, kind: 'unified', concept: 'Donación a Zblind' });
+    const caption = '💛 <b>Apoya a Zblind</b>\n\nZblind es gratis y de código abierto. Si te sirve, puedes donar el ZEC que quieras escaneando este código con tu cartera.';
+    try {
+      const png = await qrPng(uri);
+      if (api.upload) await api.upload('sendPhoto', { chat_id: chatId, caption, parse_mode: 'HTML' }, 'photo', png, 'donar-zblind.png');
+      else await api.call('sendPhoto', { chat_id: chatId, caption, parse_mode: 'HTML', photo: '(png)' });
+    } catch (e) {
+      console.error('[qr]', e.message);
+      await reply(chatId, caption);
+    }
+    return reply(chatId, [
+      '<b>Dirección</b> (mantén el dedo encima para copiarla):',
+      `<code>${R.esc(cfg.donateAddress)}</code>`,
+      '',
+      '🔍 <b>Cuentas a la vista.</b> Con Zcash todo es privado por defecto, pero tú puedes elegir enseñarlo. Esta es la <b>clave de visualización</b> de la cuenta de donaciones: con ella cualquiera ve lo que entra, y nadie puede gastarlo.',
+      `<code>${R.esc(cfg.donateViewKey)}</code>`,
+      '',
+      'Se pega en una cartera que admita importar claves de visualización. Así compruebas que lo donado llega de verdad.',
+    ].join('\n'));
+  }
+
   async function sendInstructions(chatId, pin = false) {
     const sent = await reply(chatId, T.instructions(cfg), R.KEYBOARD);
     if (pin && sent?.message_id) {
@@ -267,6 +439,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
   async function onText(msg, user, now) {
     if (await takeFeedback(msg, user, now)) return;
     if (await takeCopia(msg, user, now)) return;
+    if (await takeCobro(msg, user)) return;
     const chatId = msg.chat.id;
     const text = msg.text.trim();
     // Un enlace o una cuenta pegados sin más: se comprueban directamente
@@ -293,6 +466,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
       case 'copia': return askCopia(chatId, user.id);
       case 'community': return reply(chatId, R.community().text, R.community().extra);
       case 'dollars': return lessonDolares(chatId);
+      case 'cobrar': return startCobro(chatId, user);
     }
     // Pregunta libre: la responde la IA (con cupo diario)
     const left = await db.consumeUse(user.id, madrid(now, countryOf(user).tz).date, cfg.aiQuestionsPerDay);
@@ -327,6 +501,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
       if (kind === 'ck') return askCopia(chatId, user.id);
       if (kind === 'cf') return lessonCopias(chatId);
       if (kind === 'dd') return lessonDolares(chatId);
+      if (kind === 'cb') return onCobroButton(chatId, user, id);
       if (kind === 'p' && ASSETS[id]) return cmdPrice(chatId, user, id);
       if (kind === 'g' && ASSETS[id]) return sendChart(chatId, user, id);
       if (kind === 'a' && ASSETS[id]) return alertHelp(chatId, user, id);
@@ -397,6 +572,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
         if (/^[A-Za-z0-9_-]{1,64}$/.test(arg)) await db.setSource(user.id, arg.toLowerCase());
         await sendInstructions(chatId, true);
         if (!user.country) return reply(chatId, T.askZone, zoneButtons());
+        if (/^cobrar$/i.test(arg)) return startCobro(chatId, user); // enlace t.me/ZblindBot?start=cobrar
         return firstSteps(chatId, user);
       case 'ayuda': case 'help': return sendInstructions(chatId);
       case 'precio': return cmdPrice(chatId, user, /btc|bitcoin/i.test(arg) ? 'BTC' : 'ZEC');
@@ -413,6 +589,8 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
       case 'copias': return lessonCopias(chatId);
       case 'comunidad': return reply(chatId, R.community().text, R.community().extra);
       case 'dolares': return lessonDolares(chatId);
+      case 'cobrar': case 'cobro': return startCobro(chatId, user, arg);
+      case 'donar': case 'apoyar': return cmdDonate(chatId);
       case 'oficial': return reply(chatId, C.SEAL);
       case 'terminos': case 'privacy': return reply(chatId, T.terms);
       case 'borrar_mis_datos':
@@ -429,6 +607,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
 
   const commands = [
     ['precio', 'Precio de Zcash en tu moneda'],
+    ['cobrar', 'Cobrar en ZEC con un código QR'],
     ['aprende', 'Curso «Zcash desde cero»'],
     ['privacidad', 'Guía rápida de privacidad'],
     ['red', 'La red Zcash ahora'],
@@ -442,6 +621,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
     ['ajustes', 'Tu país, tu moneda y tus avisos'],
     ['opinion', 'Cuéntanos qué mejorar'],
     ['ayuda', 'Cómo funciona'],
+    ...(canDonate ? [['donar', 'Apoya a Zblind (cuentas a la vista)']] : []),
     ['terminos', 'Términos y privacidad'],
     ['borrar_mis_datos', 'Borrar tus datos'],
   ].map(([command, description]) => ({ command, description }));

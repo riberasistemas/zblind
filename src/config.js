@@ -38,5 +38,10 @@ export function loadConfig(vars = globalThis.process?.env ?? {}) {
     aiQuestionsPerDay: 20, // preguntas a la IA por persona y día (la IA gratuita de Cloudflare tiene un cupo diario)
     subrequestBudget: Number(env('SUBREQUEST_BUDGET', 45)),
     channelId: Number(env('CHANNEL_ID', 0)) || null,
+    // Donaciones con cuentas a la vista: dirección unificada de una cuenta SOLO para donaciones y su clave de
+    // visualización (mejor la de entradas, uivk…), publicada para que cualquiera vea lo que llega y nadie pueda
+    // gastarlo. Sin las dos, /donar no aparece en el menú.
+    donateAddress: env('DONAR_DIRECCION', ''),
+    donateViewKey: env('DONAR_CLAVE', ''),
   };
 }

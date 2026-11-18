@@ -105,7 +105,7 @@ export function analyze(input) {
   // Enlaces y dominios (con o sin https://), menos los de Telegram, que van aparte
   for (const m of raw.matchAll(/(?:https?:\/\/)?((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\/[^\s]*)?/gi)) {
     const host = m[1].toLowerCase().replace(/^www\./, '');
-    if (host === 'github.com' && /github\.com\/5wt6fw45nt-design\/(zblind|zash)\b/i.test(m[0])) {
+    if (host === 'github.com' && /github\.com\/(riberasistemas|5wt6fw45nt-design)\/(zblind|zash)\b/i.test(m[0])) {
       if (!seen.has('repo')) { seen.add('repo'); ok++; lines.push('✅ Es el código público de Zblind en GitHub.'); }
       continue;
     }
