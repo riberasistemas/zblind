@@ -6,3 +6,4 @@ marketing/reel/*.mp4
 marketing/reel/*.wav
 .env.*
 marketing/MENSAJES_*.md
+.DS_Store
