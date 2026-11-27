@@ -470,6 +470,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
       case 'community': return reply(chatId, R.community().text, R.community().extra);
       case 'dollars': return lessonDolares(chatId);
       case 'cobrar': return startCobro(chatId, user);
+      case 'donate': return cmdDonate(chatId);
     }
     // Pregunta libre: la responde la IA (con cupo diario)
     const left = await db.consumeUse(user.id, madrid(now, countryOf(user).tz).date, cfg.aiQuestionsPerDay);

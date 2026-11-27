@@ -30,7 +30,7 @@ export const BUTTONS = {
 };
 export const KEYBOARD = {
   reply_markup: {
-    keyboard: [['💰 Precio', '🎓 Aprende Zcash'], ['🛡️ Red Zcash', '🛰️ Nodos'], ['📥 Cobrar en ZEC', '🔎 ¿Es esto una copia?']].map((r) => r.map((text) => ({ text }))),
+    keyboard: [['💰 Precio', '🎓 Aprende Zcash'], ['🛡️ Red Zcash', '🛰️ Nodos'], ['📥 Cobrar en ZEC', '🔎 ¿Es esto una copia?'], ['💬 Comunidad', '💛 Donar']].map((r) => r.map((text) => ({ text }))),
     resize_keyboard: true,
     is_persistent: true,
   },

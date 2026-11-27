@@ -46,6 +46,7 @@ export function quickIntent(text) {
   if (/\b(ajustes|configuracion|configurar)\b/.test(t)) return { intent: 'settings' };
   if (/\b(mi pais|cambiar pais|moneda|zona horaria|horario)\b/.test(t)) return { intent: 'zone' };
   if (/^(opinion|sugerencia|queja|tengo una idea)$/.test(t)) return { intent: 'feedback' };
+  if (/^[^a-z]*(donar|donacion|donaciones|apoyar|apoya a zblind|como (puedo )?(donar|apoyar))$/.test(t)) return { intent: 'donate' };
   if (/\b(mis alertas|que alertas tengo|ver alertas)\b/.test(t)) return { intent: 'alerts' };
   // «avísame si zcash baja de 900», «alerta btc > 100000», «avísame cuando el zec pase de 1.000 pesos»
   const al = t.match(/(?:avisame|aviseme|alerta|alertame|avisa)(?: cuando| si)?(?: el| la)? ?(zcash|zec|bitcoin|btc)? (pasa de|pase de|supera|supere|sube de|suba de|sube a|suba a|por encima de|mas de|llega a|llegue a|baja de|baje de|cae de|caiga de|baja a|baje a|por debajo de|menos de|>|<) \$?([\d.,]+k?)/);

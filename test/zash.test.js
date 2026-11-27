@@ -270,4 +270,7 @@ test('donaciones: botón en el inicio y /donar con dirección blindada, con o si
   assert.ok(on.last(2).includes(ADDR));
   assert.match(on.last(2), /privada/);
   assert.ok(on.bot.commands.some((c) => c.command === 'donar'));
+  await on.msg(2, '💛 Donar');
+  assert.ok(on.last(2).includes(ADDR));
+  assert.equal(quickIntent('💬 Comunidad').intent, 'community');
 });
