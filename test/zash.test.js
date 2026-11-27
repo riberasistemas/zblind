@@ -12,7 +12,7 @@ import { LESSONS } from '../src/lessons.js';
 const T0 = Date.UTC(2026, 9, 15, 6, 50); // 8:50 en Madrid
 
 function setup(opts = {}) {
-  const cfg = { ...loadConfig({}), adminIds: [999] };
+  const cfg = { ...loadConfig({}), adminIds: [999], ...(opts.cfg || {}) };
   const db = createDb(d1Shim());
   const sent = [];
   const calls = [];
@@ -251,4 +251,23 @@ test('lecciones: botón de duda en todas; al final, guía de privacidad y opini�
   await s.msg(1, '/start');
   await s.tap(1, 'x:duda');
   assert.match(s.last(1), /Escríbeme tu duda/);
+});
+
+test('donaciones: botón en el inicio y /donar con dirección blindada, con o sin clave de visualización', async () => {
+  const ADDR = 'u1ntftklzh058vctx5lujjq43qj74nvx6awyxfgxfwwssftmtghafgkg8mcm54z5txkkw05pv74r2vtt6uke8gv0q6qkc7yl4a7rczalfc85yahz9k7jvs0tp82ducu5gsexznz5x7vg0vqrknmmrsfg3evsnmkzpy6h83zj4qs5u27xrf';
+  const off = setup();
+  await off.msg(1, '/donar');
+  assert.match(off.last(1), /no recoge donaciones/);
+  assert.ok(!off.bot.commands.some((c) => c.command === 'donar'));
+
+  const on = setup({ cfg: { donateAddress: ADDR } });
+  await on.msg(2, '/start');
+  await on.msg(2, 'hola');
+  const kb = on.to(2).flatMap((m) => m.reply_markup?.inline_keyboard ?? []).flat();
+  assert.ok(kb.some((b) => b.callback_data === 'x:donar'));
+  assert.ok(kb.some((b) => b.url === 'https://t.me/zcashespchat'));
+  await on.tap(2, 'x:donar');
+  assert.ok(on.last(2).includes(ADDR));
+  assert.match(on.last(2), /privada/);
+  assert.ok(on.bot.commands.some((c) => c.command === 'donar'));
 });

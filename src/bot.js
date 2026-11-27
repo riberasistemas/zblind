@@ -48,10 +48,13 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
   }
 
   // Los tres primeros pasos, en grande, para quien no sabe por dónde empezar
+  const canDonate = !!cfg.donateAddress;
   const startButtons = { reply_markup: { inline_keyboard: [
     [{ text: '🎓 Primera lección (1 minuto)', callback_data: 'l:0' }],
     [{ text: '🔎 Comprobar si algo es falso', callback_data: 'ck:0' }],
     [{ text: '💰 ¿Cuánto vale hoy?', callback_data: 'p:ZEC' }],
+    [{ text: '💬 Grupo de la comunidad', url: 'https://t.me/zcashespchat' }, { text: '✍️ Tu opinión', callback_data: 'set:feedback' }],
+    ...(canDonate ? [[{ text: '💛 Apoya a Zblind', callback_data: 'x:donar' }]] : []),
     [{ text: '📤 Compártelo con alguien', url: 'https://t.me/share/url?url=https%3A%2F%2Ft.me%2FZblindBot%3Fstart%3Damigo&text=Mira%20este%20bot%3A%20te%20ense%C3%B1a%20Zcash%20desde%20cero%20en%20espa%C3%B1ol%2C%20con%20el%20precio%20en%20tu%20moneda%20y%20alertas.%20Gratis%20y%20de%20c%C3%B3digo%20abierto.' }],
   ] } };
 
@@ -396,11 +399,10 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
     return startCobro(chatId, user); // botón de un cobro caducado: se empieza de nuevo
   }
 
-  // --- /donar: privado por defecto, transparente por elección (clave de visualización publicada) ---
+  // --- /donar: privado por defecto; si hay clave de visualización publicada, cuentas a la vista ---
 
-  const canDonate = !!(cfg.donateAddress && cfg.donateViewKey);
   async function cmdDonate(chatId) {
-    if (!canDonate) return reply(chatId, 'Zblind es gratis y por ahora no recoge donaciones. Lo que más nos ayuda: compártelo con alguien 🙏', { reply_markup: { inline_keyboard: [startButtons.reply_markup.inline_keyboard.at(-1)] } });
+    if (!canDonate) return reply(chatId, 'Zblind es gratis y por ahora no recoge donaciones. Lo que más nos ayuda: compártelo con alguien 🙏', { reply_markup: { inline_keyboard: [startButtons.reply_markup.inline_keyboard.find((r) => r[0].url?.includes('share'))] } });
     const uri = Z.paymentUri({ address: cfg.donateAddress, kind: 'unified', concept: 'Donación a Zblind' });
     const caption = '💛 <b>Apoya a Zblind</b>\n\nZblind es gratis y de código abierto. Si te sirve, puedes donar el ZEC que quieras escaneando este código con tu cartera.';
     try {
@@ -411,9 +413,10 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
       console.error('[qr]', e.message);
       await reply(chatId, caption);
     }
+    const lines = ['<b>Dirección</b> (mantén el dedo encima para copiarla):', `<code>${R.esc(cfg.donateAddress)}</code>`];
+    if (!cfg.donateViewKey) return reply(chatId, [...lines, '', 'Es una dirección blindada: tu donación es privada. Gracias de corazón 💛'].join('\n'));
     return reply(chatId, [
-      '<b>Dirección</b> (mantén el dedo encima para copiarla):',
-      `<code>${R.esc(cfg.donateAddress)}</code>`,
+      ...lines,
       '',
       '🔍 <b>Cuentas a la vista.</b> Con Zcash todo es privado por defecto, pero tú puedes elegir enseñarlo. Esta es la <b>clave de visualización</b> de la cuenta de donaciones: con ella cualquiera ve lo que entra, y nadie puede gastarlo.',
       `<code>${R.esc(cfg.donateViewKey)}</code>`,
@@ -509,6 +512,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
       if (kind === 'x' && id === 'network') return cmdNetwork(chatId, user);
       if (kind === 'x' && id === 'comunidad') return reply(chatId, R.community().text, R.community().extra);
       if (kind === 'x' && id === 'duda') return reply(chatId, T.askDoubt);
+      if (kind === 'x' && id === 'donar') return cmdDonate(chatId);
       if (kind === 'del') return reply(chatId, (await db.deleteAlert(user.id, Number(id))) ? T.alertDeleted(id) : T.alertNotFound);
       if (kind === 'set') {
         if (id === 'country') return reply(chatId, T.askZone, zoneButtons());
@@ -621,7 +625,7 @@ export function createBot({ api, db, cfg, clock = Date.now, ai = null, data = { 
     ['ajustes', 'Tu país, tu moneda y tus avisos'],
     ['opinion', 'Cuéntanos qué mejorar'],
     ['ayuda', 'Cómo funciona'],
-    ...(canDonate ? [['donar', 'Apoya a Zblind (cuentas a la vista)']] : []),
+    ...(canDonate ? [['donar', 'Apoya a Zblind con ZEC']] : []),
     ['terminos', 'Términos y privacidad'],
     ['borrar_mis_datos', 'Borrar tus datos'],
   ].map(([command, description]) => ({ command, description }));

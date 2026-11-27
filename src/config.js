@@ -40,7 +40,7 @@ export function loadConfig(vars = globalThis.process?.env ?? {}) {
     channelId: Number(env('CHANNEL_ID', 0)) || null,
     // Donaciones con cuentas a la vista: dirección unificada de una cuenta SOLO para donaciones y su clave de
     // visualización (mejor la de entradas, uivk…), publicada para que cualquiera vea lo que llega y nadie pueda
-    // gastarlo. Sin las dos, /donar no aparece en el menú.
+    // gastarlo. Sin dirección, /donar no aparece; la clave es opcional (sin ella no se enseñan las cuentas).
     donateAddress: env('DONAR_DIRECCION', ''),
     donateViewKey: env('DONAR_CLAVE', ''),
   };

@@ -20,3 +20,7 @@ crons = []  # el reloj (ribera-reloj) llama a /tick cada minuto
 
 [observability]
 enabled = true
+
+[vars]
+# Dirección pública de donaciones (cuenta solo para donaciones). DONAR_CLAVE (clave de visualización) es opcional.
+DONAR_DIRECCION = "u1ntftklzh058vctx5lujjq43qj74nvx6awyxfgxfwwssftmtghafgkg8mcm54z5txkkw05pv74r2vtt6uke8gv0q6qkc7yl4a7rczalfc85yahz9k7jvs0tp82ducu5gsexznz5x7vg0vqrknmmrsfg3evsnmkzpy6h83zj4qs5u27xrf"
